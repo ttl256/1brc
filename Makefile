@@ -1,13 +1,15 @@
 .DEFAULT_GOAL := all
 
-BIN_NAME := weather
+PACKAGE_NAME ?= weather
+BIN_EXTENSION ?= exe
+BIN_NAME := $(PACKAGE_NAME).$(BIN_EXTENSION)
 
 .PHONY: all
 all: build
 
 .PHONY: build
 build:
-	go build -o $(BIN_NAME) ./cmd/weather
+	go build -o $(BIN_NAME) ./cmd/$(PACKAGE_NAME)
 
 .PHONY: test
 test:
