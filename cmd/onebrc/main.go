@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ttl256/1brcgo/internal/weather"
+	"github.com/ttl256/1brcgo/internal/onebrc"
 )
 
 type ExitCode int
@@ -29,10 +29,10 @@ func main() {
 
 	go func() {
 		sig := <-sigCh
-		cancel(fmt.Errorf("received signal: %s", sig))
+		cancel(fmt.Errorf("received signal: %s. stopping", sig))
 		go func() {
 			sig = <-sigCh
-			os.Exit(1)
+			os.Exit(int(One))
 		}()
 	}()
 
@@ -42,17 +42,21 @@ func main() {
 func run(ctx context.Context) ExitCode {
 	var filepath string
 	var cpuprofile string
+	var baseline bool
+	var printB bool
 	var debug bool
 
 	flag.StringVar(&filepath, "f", "", "path to a file with input data")
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "path to cpuprofile file")
+	flag.BoolVar(&baseline, "baseline", false, "run baseline implementation")
+	flag.BoolVar(&printB, "print", false, "print resulting string")
 	flag.BoolVar(&debug, "v", false, "enable verbose logging")
 
 	flag.Parse()
 
 	var loggerOptions = new(slog.HandlerOptions)
 	loggerOptions.AddSource = false
-	loggerOptions.Level = slog.LevelInfo
+	loggerOptions.Level = slog.LevelError
 
 	if debug {
 		loggerOptions.AddSource = true
@@ -90,15 +94,32 @@ func run(ctx context.Context) ExitCode {
 	}
 	defer f.Close()
 
+	logger.LogAttrs(ctx, slog.LevelDebug, "starting")
+	defer logger.LogAttrs(ctx, slog.LevelDebug, "stopping")
+
 	start := time.Now()
 
-	cities, err := weather.Solution(ctx, f, logger)
-	if err != nil {
-		logger.LogAttrs(ctx, slog.LevelError, "", slog.Any("error", err))
-		return One
+	var cities *onebrc.CityResults
+
+	if baseline {
+		cities, err = onebrc.SolutionBaseline(f)
+		if err != nil {
+			logger.LogAttrs(ctx, slog.LevelError, "", slog.Any("error", err))
+			return One
+		}
+	} else {
+		cities, err = onebrc.Solution(ctx, f, logger)
+		if err != nil {
+			logger.LogAttrs(ctx, slog.LevelError, "", slog.Any("error", err))
+			return One
+		}
 	}
 
-	logger.LogAttrs(ctx, slog.LevelInfo, "total number of cities", slog.Int("number", len(cities)))
+	if printB {
+		fmt.Println(cities.String()) //nolint: forbidigo // fine
+	}
+
+	logger.LogAttrs(ctx, slog.LevelInfo, "total number of cities", slog.Int("number", cities.Len()))
 	logger.LogAttrs(ctx, slog.LevelInfo, "total time", slog.Duration("time", time.Since(start)))
 	return Zero
 }

@@ -1,4 +1,4 @@
-package weather_test
+package onebrc_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ttl256/1brcgo/internal/weather"
+	"github.com/ttl256/1brcgo/internal/onebrc"
 )
 
 var defaultLogger = slog.New( //nolint: gochecknoglobals // let me be
@@ -18,16 +18,16 @@ var defaultLogger = slog.New( //nolint: gochecknoglobals // let me be
 func TestParseRow(t *testing.T) {
 	cases := []struct {
 		input string
-		want  weather.Measurement
+		want  onebrc.Measurement
 	}{
-		{input: "Sharya;92.4", want: weather.Measurement{Name: "Sharya", Temperature: 92.4}},
-		{input: "Đà Nẵng;17.0", want: weather.Measurement{Name: "Đà Nẵng", Temperature: 17.0}},
-		{input: "Saint-Saulve;-40.3", want: weather.Measurement{Name: "Saint-Saulve", Temperature: -40.3}},
+		{input: "Sharya;92.4", want: onebrc.Measurement{Name: "Sharya", Temperature: 92.4}},
+		{input: "Đà Nẵng;17.0", want: onebrc.Measurement{Name: "Đà Nẵng", Temperature: 17.0}},
+		{input: "Saint-Saulve;-40.3", want: onebrc.Measurement{Name: "Saint-Saulve", Temperature: -40.3}},
 	}
 
 	for _, tt := range cases {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := weather.ParseRow(tt.input)
+			got, err := onebrc.ParseRow(tt.input)
 			if err != nil {
 				t.Errorf("did not expect an error, got %v", err)
 			}
@@ -45,12 +45,12 @@ func TestSolution(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []weather.Result{
+	want := onebrc.NewCityResults([]onebrc.Result{
 		{Name: "Korostyshiv", Min: -15.2, Avg: -15.2, Max: -15.2},
-		{Name: "Sebba", Min: 0, Avg: 23.3, Max: 67},
-	}
+		{Name: "Sebba", Min: 0, Avg: 23.4, Max: 67},
+	})
 
-	got, err := weather.Solution(context.Background(), f, defaultLogger)
+	got, err := onebrc.Solution(context.Background(), f, defaultLogger)
 	if err != nil {
 		t.Errorf("did not expect an error, got %v", err)
 	}
@@ -85,7 +85,7 @@ func TestChunkifyFile(t *testing.T) {
 			go func() {
 				defer wg.Done()
 
-				err = weather.ChunkifyFile(context.Background(), f, tt.chunkSize, []byte{'\n'}, outCh, defaultLogger)
+				err = onebrc.ChunkifyFile(context.Background(), f, tt.chunkSize, []byte{'\n'}, outCh, defaultLogger)
 				if err != nil {
 					t.Errorf("did not expect an error, got %v", err)
 				}
@@ -106,5 +106,21 @@ func TestChunkifyFile(t *testing.T) {
 				t.Error(cmp.Diff(tt.want, got))
 			}
 		})
+	}
+}
+
+func TestBuildCityString(t *testing.T) {
+	input := []onebrc.Result{
+		{Name: "C", Min: -10.1, Avg: 0, Max: 98.9},
+		{Name: "B", Min: 0, Avg: 0, Max: 0},
+		{Name: "A", Min: -99.9, Avg: 0.9, Max: 99.9},
+	}
+
+	want := "{C=-10.1/0.0/98.9, B=0.0/0.0/0.0, A=-99.9/0.9/99.9}"
+
+	got := onebrc.NewCityResults(input).String()
+
+	if !cmp.Equal(want, got) {
+		t.Error(cmp.Diff(want, got))
 	}
 }

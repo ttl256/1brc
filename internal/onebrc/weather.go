@@ -1,4 +1,4 @@
-package weather
+package onebrc
 
 import (
 	"bufio"
@@ -18,6 +18,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 )
+
+const mapSize = 10000
 
 type Measurement struct {
 	Name        string
@@ -43,7 +45,7 @@ type CityMap map[string]*City
 func ParseRow(s string) (Measurement, error) {
 	city, temperatureRaw, found := strings.Cut(s, ";")
 	if !found {
-		panic(fmt.Sprintf("expected to have ';' as a separator in string %q", s))
+		return Measurement{}, fmt.Errorf("expected to have ';' as a separator in string %q", s)
 	}
 
 	temperature, err := strconv.ParseFloat(temperatureRaw, 64)
@@ -55,10 +57,7 @@ func ParseRow(s string) (Measurement, error) {
 }
 
 func BuildMap(ctx context.Context, f *os.File, logger *slog.Logger) (CityMap, error) {
-	const (
-		mapSize = 10000
-		bufSize = 32
-	)
+	const bufSize = 32
 
 	numWorkers := runtime.NumCPU() - 1
 	logger.LogAttrs(ctx, slog.LevelDebug, "number of workers", slog.Int("number", numWorkers))
@@ -118,9 +117,7 @@ func BuildMap(ctx context.Context, f *os.File, logger *slog.Logger) (CityMap, er
 	return cityMap, g.Wait()
 }
 
-func Solution(ctx context.Context, f *os.File, logger *slog.Logger) ([]Result, error) {
-	const roundingRatio = 10.0 // round to one decimal place
-
+func Solution(ctx context.Context, f *os.File, logger *slog.Logger) (*CityResults, error) {
 	m, err := BuildMap(ctx, f, logger)
 	if err != nil {
 		return nil, err
@@ -128,25 +125,11 @@ func Solution(ctx context.Context, f *os.File, logger *slog.Logger) ([]Result, e
 
 	logger.LogAttrs(ctx, slog.LevelDebug, "started building final slice")
 
-	rs := make([]Result, 0, len(m))
-
-	for k, v := range m {
-		resultCity := Result{
-			Name: k,
-			Min:  v.Min,
-			Avg:  math.Round(v.Total/float64(v.Count)*roundingRatio) / roundingRatio,
-			Max:  v.Max,
-		}
-		rs = append(rs, resultCity)
-	}
-
-	slices.SortStableFunc(rs, func(a Result, b Result) int {
-		return strings.Compare(a.Name, b.Name)
-	})
+	s := CityResultsFromMap(m)
 
 	logger.LogAttrs(ctx, slog.LevelDebug, "finished building final slice")
 
-	return rs, nil
+	return s, nil
 }
 
 func ChunkifyFile(
@@ -259,4 +242,95 @@ loop:
 	}
 
 	return nil
+}
+
+func SolutionBaseline(r io.Reader) (*CityResults, error) {
+	cityMap := make(CityMap, mapSize)
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		measurement, err := ParseRow(scanner.Text())
+		if err != nil {
+			return nil, err
+		}
+
+		if city, ok := cityMap[measurement.Name]; ok {
+			city.Count++
+			city.Total += measurement.Temperature
+			if measurement.Temperature < city.Min {
+				city.Min = measurement.Temperature
+			}
+			if measurement.Temperature > city.Max {
+				city.Max = measurement.Temperature
+			}
+		} else {
+			cityMap[measurement.Name] = &City{
+				Count: 1,
+				Total: measurement.Temperature,
+				Min:   measurement.Temperature,
+				Max:   measurement.Temperature,
+			}
+		}
+	}
+
+	return CityResultsFromMap(cityMap), nil
+}
+
+type CityResults struct {
+	Cities []Result
+}
+
+func NewCityResults(s []Result) *CityResults {
+	return &CityResults{Cities: s}
+}
+
+// {city1=min/avg/max, city2=min/avg/max}.
+func (c *CityResults) String() string {
+	buf := &strings.Builder{}
+
+	buf.WriteByte('{')
+	for i, r := range c.Cities {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		buf.WriteString(r.Name)
+		buf.WriteByte('=')
+		buf.WriteString(strconv.FormatFloat(r.Min, 'f', 1, 64))
+		buf.WriteByte('/')
+		buf.WriteString(strconv.FormatFloat(r.Avg, 'f', 1, 64))
+		buf.WriteByte('/')
+		buf.WriteString(strconv.FormatFloat(r.Max, 'f', 1, 64))
+	}
+	buf.WriteByte('}')
+
+	return buf.String()
+}
+
+func (c *CityResults) Len() int {
+	return len(c.Cities)
+}
+
+func CityResultsFromMap(m CityMap) *CityResults {
+	s := make([]Result, 0, len(m))
+
+	for k, v := range m {
+		s = append(s, Result{
+			Name: k,
+			Min:  v.Min,
+			Avg:  CeilToOneDecimalPlace(v.Total / float64(v.Count)),
+			Max:  v.Max,
+		})
+	}
+
+	slices.SortStableFunc(s, func(a Result, b Result) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	return NewCityResults(s)
+}
+
+func CeilToOneDecimalPlace(x float64) float64 {
+	const roundingRatio = 10.0 // round to one decimal place
+
+	return math.Ceil(x*roundingRatio) / roundingRatio
 }
