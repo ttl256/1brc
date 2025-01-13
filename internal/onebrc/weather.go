@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	berrors "github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -50,7 +51,7 @@ func ParseRow(s string) (Measurement, error) {
 
 	temperature, err := strconv.ParseFloat(temperatureRaw, 64)
 	if err != nil {
-		return Measurement{}, err
+		return Measurement{}, berrors.WithStack(err)
 	}
 
 	return Measurement{Name: city, Temperature: temperature}, nil
@@ -114,7 +115,13 @@ func BuildMap(ctx context.Context, f *os.File, logger *slog.Logger) (CityMap, er
 		logger.LogAttrs(ctx, slog.LevelDebug, "finished processing partial maps")
 	}
 
-	return cityMap, g.Wait()
+	err := g.Wait()
+
+	if err != nil {
+		return nil, berrors.WithStack(err)
+	}
+
+	return cityMap, nil
 }
 
 func Solution(ctx context.Context, f *os.File, logger *slog.Logger) (*CityResults, error) {
@@ -148,7 +155,7 @@ func ChunkifyFile(
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return err
+			return berrors.WithStack(err)
 		}
 
 		chunkToSend := make([]byte, len(leftover)+bytesRead)
@@ -165,7 +172,7 @@ func ChunkifyFile(
 
 		select {
 		case <-ctx.Done():
-			return context.Cause(ctx)
+			return berrors.WithStack(context.Cause(ctx))
 		case out <- chunkToSend[:newLineIndex+1]:
 			logger.LogAttrs(ctx, slog.LevelDebug, "sent a chunk", slog.Int("seq", chunkSeq))
 		}
@@ -174,7 +181,7 @@ func ChunkifyFile(
 	if len(leftover) > 0 {
 		select {
 		case <-ctx.Done():
-			return context.Cause(ctx)
+			return berrors.WithStack(context.Cause(ctx))
 		case out <- leftover:
 			logger.LogAttrs(ctx, slog.LevelDebug, "sent leftover chunk")
 		}
@@ -192,7 +199,7 @@ loop:
 	for {
 		select {
 		case <-ctx.Done():
-			return context.Cause(ctx)
+			return berrors.WithStack(context.Cause(ctx))
 		case chunk, chanOk := <-chunks:
 			logger.LogAttrs(ctx, slog.LevelDebug, "started processing a chunk")
 			if !chanOk {
@@ -228,7 +235,7 @@ loop:
 			}
 
 			if err := scanner.Err(); err != nil {
-				return err
+				return berrors.WithStack(err)
 			}
 			logger.LogAttrs(ctx, slog.LevelDebug, "finished processing a chunk")
 		}
@@ -236,7 +243,7 @@ loop:
 
 	select {
 	case <-ctx.Done():
-		return context.Cause(ctx)
+		return berrors.WithStack(context.Cause(ctx))
 	case maps <- partialMap:
 		logger.LogAttrs(ctx, slog.LevelDebug, "sent a partial map")
 	}

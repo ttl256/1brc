@@ -6,14 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"os/signal"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"math/rand/v2"
 
 	"github.com/dustin/go-humanize"
 	"github.com/ttl256/1brcgo/internal/measurements"

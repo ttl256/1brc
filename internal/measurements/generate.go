@@ -6,10 +6,12 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"strings"
+
+	berrors "github.com/pkg/errors"
 )
 
 const (
-	keysetSize        = 10_000 // Number of unique weather statations in the dataset.
+	keysetSize        = 10_000 // Number of unique weather stations in the dataset.
 	letters           = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	oneDecimalPlace   = 10
 	fourDecimalPlaces = 40
@@ -47,7 +49,7 @@ func GenerateDataSet(ctx context.Context, r *rand.Rand, n int, chunkSize int, ch
 		if len(buf) >= chunkSize {
 			select {
 			case <-ctx.Done():
-				return context.Cause(ctx)
+				return berrors.WithStack(context.Cause(ctx))
 			case chunkCh <- buf:
 			}
 			buf = make([]string, 0, chunkSize)
@@ -57,7 +59,7 @@ func GenerateDataSet(ctx context.Context, r *rand.Rand, n int, chunkSize int, ch
 	if len(buf) != 0 {
 		select {
 		case <-ctx.Done():
-			return context.Cause(ctx)
+			return berrors.WithStack(context.Cause(ctx))
 		case chunkCh <- buf:
 		}
 	}
@@ -67,8 +69,8 @@ func GenerateDataSet(ctx context.Context, r *rand.Rand, n int, chunkSize int, ch
 
 // Generates a slice of [WeatherStation] of length n.
 func GenerateWeatherStations(r *rand.Rand, n int) []WeatherStation {
-	var stations []WeatherStation
-	names := make(map[string]struct{})
+	stations := make([]WeatherStation, 0, n)
+	names := make(map[string]struct{}, n)
 
 	for range n {
 		var name string

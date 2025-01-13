@@ -7,3 +7,5 @@ require github.com/google/go-cmp v0.6.0
 require golang.org/x/sync v0.10.0
 
 require github.com/dustin/go-humanize v1.0.1
+
+require github.com/pkg/errors v0.9.1

@@ -28,8 +28,8 @@ test:
 
 .PHONY: audit
 audit: test
-	-gofmt -d $(CURDIR) | colordiff
-	-golangci-lint run
+	gofmt -d $(CURDIR) | colordiff
+	golangci-lint run
 
 .PHONY: no-dirty
 no-dirty:
